@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Comptes mensuels</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 20px auto; padding: 0 12px; }
+  h1 { font-size: 1.4em; color: #5717ed; text-align: center;}
+  section { border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-bottom: 18px; }
+  h2 { font-size: 1.1em; margin-top: 0; text-align: center; }
+  label { display: inline-block; min-width: 90px;}
+  input, select { padding: 4px; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  thead th{background-color: #ddd;}
+  th, td { border-bottom: 1px solid #eee; padding: 6px 8px; text-align: left; font-size: 0.9em; }
+  .negatif { color: #b00020; }
+  .positif { color: #1b7a1b; }
+  .depasse { color: #b00020; font-weight: bold; }
+  button { cursor: pointer; padding: 5px 10px; }
+  #etat-chargement { color: #888; font-style: italic; }
+
+  /* Disposition en deux colonnes : transactions a gauche, budgets a
+     droite, alignes en haut pour avoir les deux sous les yeux en
+     meme temps. */
+  .disposition-principale { display: flex; gap: 16px; align-items: flex-start; }
+  .colonne-gauche { flex: 2; min-width: 0; }
+  .colonne-droite { flex: 1; min-width: 260px; }
+  @media (max-width: 800px) {
+    .disposition-principale { flex-direction: column; }
+    .ligne-haut { flex-direction: column; }
+  }
+
+  /* Couleurs par poste (appliquees aux colonnes Date/Libelle/Categorie/
+     Paiement, jamais a la colonne Somme pour ne pas masquer le
+     rouge/vert credit-debit). Meme code couleur reutilise dans les
+     bilans par categorie et par poste. */
+  .poste-LOGEMENT     { background-color: #f5a3a3; }
+  .poste-TRANSPORT    { background-color: #f7c08a; }
+  .poste-ALIMENTATION { background-color: #f5e07a; }
+  .poste-SOINS_PERSO  { background-color: #b8f0c9; }
+  .poste-QUOTIDIEN    { background-color: #4f9e6b; color: #fff; }
+  .poste-EPARGNE      { background-color: #b3d9f7; }
+  .poste-LOISIRS      { background-color: #4472c4; color: #fff; }
+  .poste-DONS         { background-color: #cfa8e0; }
+  .poste-BANQUE       { background-color: #c9a37a; }
+  .poste-AUTRE        { background-color: #e5e5e5; }
+</style>
+</head>
+<body>
+  <h1>Gestion des comptes mensuels</h1>
+  <p id="etat-chargement">Chargement du module de calcul...</p>
+
+  <div class="ligne-haut" style="display:flex; gap:16px; align-items:flex-start;">
+    <section id="section-ajout" style="display:none; flex:1;">
+      <h2>Ajouter une transaction</h2>
+      <div>
+        <label>Date</label><input type="date" id="f-date">
+        <label>Libelle</label><input type="text" id="f-libelle">
+      </div>
+      <div>
+        <label>Categorie</label><select id="f-categorie"></select>
+        <label>Paiement</label><select id="f-paiement"></select>
+      </div>
+      <div>
+        <label>Somme</label><input type="text" id="f-somme" placeholder="-50.00 ou 12.50+3.20">
+      </div>
+      <button id="btn-ajouter">Ajouter</button>
+    </section>
+
+    <section id="section-sauvegarde" style="display:none; flex:1;">
+      <h2>Sauvegarde</h2>
+      <p>Vos donnees sont stockees dans ce navigateur, pensez à faire une sauvegarde.</p>
+      <button id="btn-telecharger">Télécharger une sauvegarde (.txt)</button>
+      <br><br>
+      <label>Recharger une sauvegarde :</label>
+      <input type="file" id="f-fichier-import" accept=".txt">
+      <hr>
+      <p>Génèrer un fichier HTML autonome à partager.</p>
+      <button id="btn-apercu-html">Générer un aperçu HTML à partager</button>
+    </section>
+  </div>
+
+  <div class="disposition-principale">
+    <div class="colonne-gauche">
+      <section id="section-periode" style="display:none">
+        <h2>Transactions de la periode</h2>
+        <label>Mois</label><input type="number" id="f-mois" min="1" max="12" style="width:50px">
+        <label>Annee</label><input type="number" id="f-annee" style="width:80px">
+        <button id="btn-periode">Afficher</button>
+        <p style="text-align: right;font-weight: bold;"id="solde-periode"></p>
+        <table id="table-transactions">
+          <thead><tr><th>Date</th><th>Libelle</th><th>Categorie</th><th>Paiement</th><th>Somme</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </div>
+
+    <div class="colonne-droite">
+      <section id="section-budgets" style="display:none">
+        <h2>Budgets par poste</h2>
+        <table id="table-budgets">
+          <thead><tr><th>Poste</th><th>Budget</th><th>Depense</th><th>Reste</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section id="section-bilan-categorie" style="display:none">
+        <h2>Bilan par categorie</h2>
+        <table id="table-bilan-categorie">
+          <thead><tr><th>Categorie</th><th>Nb</th><th>Total</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="totaux-categorie"></p>
+      </section>
+    </div>
+  </div>
+
+  <section id="section-recurrentes" style="display:none">
+    <h2>Transactions recurrentes (salaire, loyer...)</h2>
+    <div>
+      <label>Libelle</label><input type="text" id="r-libelle">
+      <label>Categorie</label><select id="r-categorie"></select>
+    </div>
+    <div>
+      <label>Paiement</label><select id="r-paiement"></select>
+      <label>Jour du mois</label><input type="number" id="r-jour" min="1" max="31" value="1" style="width:60px">
+    </div>
+    <div>
+      <label>Montant</label><input type="text" id="r-montant" placeholder="2200 ou 2000+200">
+      <label><input type="checkbox" id="r-actif" checked style="width:auto"> Actif</label>
+    </div>
+    <button id="btn-recurrente-valider">Ajouter le modele</button>
+    <button id="btn-recurrente-annuler" style="display:none">Annuler la modification</button>
+
+    <table id="table-recurrentes">
+      <thead><tr><th>Libelle</th><th>Categorie</th><th>Paiement</th><th>Jour</th><th>Montant</th><th>Etat</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <p>
+      <button id="btn-generer-recurrentes">Generer les transactions recurrentes pour la periode ci-dessus (mois/annee)</button>
+    </p>
+    <p style="font-size:0.85em; color:#666">
+      Pour chaque modele actif, une boite de dialogue vous proposera le montant
+      et la date (modifiables), et vous demandera quoi faire en cas de doublon
+      (ignorer / remplacer / ajouter quand meme) — comme dans la version en
+      ligne de commande.
+    </p>
+  </section>
+
+  <!-- Genere par Emscripten : calcul.js + calcul.wasm (voir README) -->
+  <script src="calcul.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
